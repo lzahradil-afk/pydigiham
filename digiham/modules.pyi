@@ -1,5 +1,6 @@
 from pycsdr.modules import Module, Writer
 from digiham.ambe import Mode
+from typing import Dict
 
 version: str = ...
 digiham_version: str = ...
@@ -30,7 +31,7 @@ class MbeSynthesizer(Module):
     def hasAmbe(server: str = "") -> bool:
         ...
 
-    def __init__(self, mode: Mode, server: str = ""):
+    def __init__(self, mode: Mode, server: str = "", codecArgs: Dict[str, str] = {}):
         ...
 
 

@@ -2,6 +2,7 @@
 #include "types.hpp"
 
 #include <cstring>
+#include <map>
 #include <digiham/mbe_synthesizer.hpp>
 
 static Digiham::Mbe::Mode* convertToAmbeMode(PyObject* mode) {
@@ -120,12 +121,13 @@ static int MbeSynthesizer_init(MbeSynthesizer* self, PyObject* args, PyObject* k
     self->inputFormat = FORMAT_CHAR;
     self->outputFormat = FORMAT_SHORT;
 
-    static char* kwlist[] = {(char*) "mode", (char*) "server", NULL};
+    static char* kwlist[] = {(char*) "mode", (char*) "server", (char*) "codecArgs", NULL};
 
     PyTypeObject* ModeType = getAmbeModeType();
     char* server = (char*) "";
     PyObject* mode;
-    if (!PyArg_ParseTupleAndKeywords(args, kwds, "O!|s", kwlist, ModeType, &mode, &server)) {
+    PyObject* codecArgs = Py_None;
+    if (!PyArg_ParseTupleAndKeywords(args, kwds, "O!|sO", kwlist, ModeType, &mode, &server, &codecArgs)) {
         Py_DECREF(ModeType);
         return -1;
     }
@@ -138,6 +140,25 @@ static int MbeSynthesizer_init(MbeSynthesizer* self, PyObject* args, PyObject* k
     }
 
     std::string serverString(server);
+    std::map<std::string, std::string> codecArguments;
+    if (codecArgs != Py_None) {
+        if (!PyDict_Check(codecArgs)) {
+            delete ambeMode;
+            PyErr_SetString(PyExc_TypeError, "codecArgs must be a dict of strings");
+            return -1;
+        }
+        PyObject* key;
+        PyObject* value;
+        Py_ssize_t position = 0;
+        while (PyDict_Next(codecArgs, &position, &key, &value)) {
+            if (!PyUnicode_Check(key) || !PyUnicode_Check(value)) {
+                delete ambeMode;
+                PyErr_SetString(PyExc_TypeError, "codecArgs must be a dict of strings");
+                return -1;
+            }
+            codecArguments[PyUnicode_AsUTF8(key)] = PyUnicode_AsUTF8(value);
+        }
+    }
 
     // creating an mbesysnthesizer module potentially waits for network traffic, so we allow other threads in the meantime
     Digiham::Mbe::MbeSynthesizer* module = nullptr;
@@ -147,6 +168,9 @@ static int MbeSynthesizer_init(MbeSynthesizer* self, PyObject* args, PyObject* k
     Py_BEGIN_ALLOW_THREADS
     try {
         module = createModule(serverString);
+        for (const auto& argument: codecArguments) {
+            module->setCodecArgument(argument.first, argument.second);
+        }
         module->setMode(ambeMode);
     } catch (const Digiham::Mbe::ServerError& e) {
         error_type = PyExc_ServerError;
